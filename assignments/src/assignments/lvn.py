@@ -218,6 +218,19 @@ def lvn(block):
             var2val[instr['dest']] = value_number
     
     # we need to "repair" after renaming, since later basic blocks don't know that we've renamed stuff
+    # note: this actually leads to performance regressions in some cases, since dce is not smart enough
+    # to realize the copy is dead sometimes. other times (e.g. in a loop) it's not dead. i thought 
+    # of just renaming the final def / all subsequent uses back to the original name
+    # but it's not quite that simple - doing it naively led to this. a and b aren't swapped, as
+    # `a = id b` used to be correct but is no longer correct after renaming b__2 -> b. 
+    
+    # temp = id b; 
+    # v10: int = call @mod a b; 
+    # b = id v10; 
+    # a = id b;
+    
+    # instead, you'd have to check if the original b (b__0) is still alive after the point that 
+    # b__2 is defined before renaming b__2 -> b. it's a bit of a headache all around, so i just ignore it
     def repair_block(block, var_name_counts):
         for (var, count) in var_name_counts.items():
             if count > 1:
