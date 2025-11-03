@@ -1,0 +1,8 @@
+@main {
+  sum1: int = const 6;
+  sum2: int = const 6;
+  jmp .label;
+.label:
+  prod: int = mul sum1 sum2;
+  print prod;
+}

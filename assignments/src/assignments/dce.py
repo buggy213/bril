@@ -2,7 +2,7 @@
 
 import json
 import sys
-from assignments.dce.form_blocks import form_blocks
+from assignments.form_blocks import form_blocks
 
 # perform a trivial form of DCE that works on the whole function, where
 # operations whose value is never used are simply removed. value generating

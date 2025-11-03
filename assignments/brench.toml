@@ -13,3 +13,10 @@ pipeline = [
     "bril-dce",
     "brili -p {args}",
 ]
+
+[runs.lvn]
+pipeline = [
+    "bril2json",
+    "bril-lvn",
+    "brili -p {args}",
+]

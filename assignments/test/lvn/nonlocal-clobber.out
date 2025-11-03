@@ -1,0 +1,7 @@
+@main {
+  x: int = const 1;
+.lb:
+  y = id x;
+  x__2: int = add x x;
+  print x;
+}
