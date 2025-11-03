@@ -3,4 +3,5 @@
   b: int = const 2;
 .lbl:
   b__2: int = add a b;
+  b = id b__2;
 }

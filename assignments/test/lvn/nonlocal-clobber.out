@@ -4,4 +4,5 @@
   y = id x;
   x__2: int = add x x;
   print x;
+  x = id x__2;
 }

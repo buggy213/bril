@@ -1,0 +1,5 @@
+# ARGS: --no-dce
+@palindrome(in: int, len: int): bool {
+ is_palindrome: bool = const false;
+ zero: int = const 0;
+}

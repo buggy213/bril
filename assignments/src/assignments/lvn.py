@@ -40,8 +40,7 @@ def lvn(block):
                 # we need to ensure arg is the latest name
                 count = var_name_counts[arg]
                 instr['args'][i] = f'{arg}__{count}'
-
-
+        
         # handle def
         if 'dest' in instr:
             dest = instr['dest']
@@ -51,12 +50,11 @@ def lvn(block):
                 instr['dest'] = f'{dest}__{count}'
 
     # perform value numbering, rematerializing each instruction as we go along
+    call_nonce = 0
     for instr in block:
         # if this instruction does not produce a value (i.e. it is an effect operation)
         # we just need to rewrite its arguments
-        # note: function calls are not necessarily pure (they can include a print)
-        # so we cannot really optimize them away by giving them value numbers
-        if 'dest' not in instr or instr['op'] == 'call':
+        if 'dest' not in instr:
             if 'args' in instr:
                 new_args = []
                 for arg in instr['args']:
@@ -65,10 +63,17 @@ def lvn(block):
                     new_args.append(canonical_variable)
                 instr['args'] = new_args
             continue
-        
+
         # otherwise, we should see if the value it produces already exists in the table
-        if instr['op'] == 'const':
-            value = (instr['op'], instr['value'])
+        # note: function calls are not necessarily pure (they can include a print)
+        # so we cannot really optimize them away by giving them value numbers
+        if instr['op'] == 'call':
+            value = (instr['op'], call_nonce)
+            call_nonce += 1
+        elif instr['op'] == 'const':
+            # needed because python treats ints and bools kinda equivalently (why???)
+            vtype = 'bconst' if isinstance(instr['value'], bool) else 'iconst'
+            value = (vtype, instr['value'])
         else:
             value_numbers = [var2val[arg] for arg in instr['args']]
 
@@ -101,10 +106,10 @@ def lvn(block):
 
             # constant fold for comparisons
             if instr['op'] in ('eq', 'le', 'ge') and value[1] == value[2]:
-                value = ('const', True)
+                value = ('bconst', True)
 
             if instr['op'] in ('lt', 'gt') and value[1] == value[2]:
-                value = ('const', False)
+                value = ('bconst', False)
         
         # helpers for constant folding
         def check_wrap(x):
@@ -116,7 +121,7 @@ def lvn(block):
                 raise ArithmeticError
             return a // b
         def value_is_constant(value_table, value_number):
-            return value_table[value_number][0][0] == 'const'
+            return value_table[value_number][0][0] in ('iconst', 'bconst')
         def constant_value(value_table, value_number):
             return value_table[value_number][0][1]
         FOLDABLE_OPS = {
@@ -140,7 +145,9 @@ def lvn(block):
             op = FOLDABLE_OPS[value[0]]
             if all([value_is_constant(value_table, vn) for vn in arg_value_numbers]):
                 argument_values = [constant_value(value_table, vn) for vn in arg_value_numbers]
-                value = ('const', op(*argument_values))
+                folded = op(*argument_values)
+                vtype = 'bconst' if isinstance(folded, bool) else 'iconst'
+                value = (vtype, folded)
         
         value_is_true = lambda vn: value_is_constant(value_table, vn) and constant_value(value_table, vn)
         value_is_false = lambda vn: value_is_constant(value_table, vn) and (not constant_value(value_table, vn))
@@ -148,12 +155,12 @@ def lvn(block):
         if value[0] == 'or':
             arg_value_numbers = value[1:]
             if any([value_is_true(vn) for vn in arg_value_numbers]):
-                value = ('const', True)
+                value = ('bconst', True)
         
         if value[0] == 'and':
             if any([value_is_false(vn) for vn in arg_value_numbers]):
-                value = ('const', False)
-                
+                value = ('bconst', False)
+        
         if value in value_map:
             # it is already in the table, so we can just replace it with a copy ('id')
             value_number = value_map[value]
@@ -167,7 +174,7 @@ def lvn(block):
 
             # constprop - if the value is actually a constant, then replace with const op
             value = value_table[value_number][0]
-            if value[0] == 'const':
+            if value[0] in ('bconst', 'iconst'):
                 instr.clear()
                 instr['op'] = 'const'
                 instr['value'] = value[1]
@@ -183,7 +190,7 @@ def lvn(block):
             value_number = len(value_table)
 
             # rematerialize the instruction based on the value
-            if value[0] == 'const':
+            if value[0] in ('bconst', 'iconst'):
                 # rematerialize the full constant instruction
                 # (this accomodates constprop, since value might not match op after doing folding)
                 dest = instr['dest']
@@ -210,7 +217,24 @@ def lvn(block):
             # update var2val with a new mapping to the new value number
             var2val[instr['dest']] = value_number
     
-    # print(block)
+    # we need to "repair" after renaming, since later basic blocks don't know that we've renamed stuff
+    def repair_block(block, var_name_counts):
+        for (var, count) in var_name_counts.items():
+            if count > 1:
+                copy = {
+                    'op': 'id',
+                    'args': [f'{var}__{count}'],
+                    'dest': var,
+                }
+                block.append(copy)
+    
+    if 'op' in block[-1] and block[-1]['op'] in ('jmp', 'br', 'ret'):
+        terminator = block.pop()
+        repair_block(block, var_name_counts)
+        block.append(terminator)
+    else:
+        repair_block(block, var_name_counts)
+
     return block
 
 
