@@ -10,6 +10,7 @@ dependencies = []
 bril-dce = "assignments.dce:main"
 bril-lvn = "assignments.lvn:main"
 bril-df  = "assignments.dataflow:main"
+bril-dom = "assignments.dominance:main"
 
 [build-system]
 requires = ["uv_build>=0.9.6,<0.10.0"]
